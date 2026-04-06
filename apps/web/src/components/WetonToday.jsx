@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Calendar, Loader2 } from "lucide-react";
+import { calculateWeton } from "../app/api/utils/wetonCalculator";
+import { wetonData } from "../utils/wetonData";
 
 export default function WetonToday() {
   const [loading, setLoading] = useState(true);
@@ -11,13 +13,42 @@ export default function WetonToday() {
   useEffect(() => {
     const fetchTodayWeton = async () => {
       try {
-        const response = await fetch("/api/weton/today");
-        const result = await response.json();
+        const today = new Date();
+        const wetonResult = calculateWeton(today, false);
+        
+        const result = {
+          date: today.toISOString().split("T")[0],
+          dateFormatted: today.toLocaleDateString("id-ID", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }),
+          weton: wetonResult.weton,
+          hari: wetonResult.hari,
+          hariNeptu: wetonResult.hariNeptu,
+          pasaran: wetonResult.pasaran,
+          pasaranNeptu: wetonResult.pasaranNeptu,
+          totalNeptu: wetonResult.totalNeptu,
+        };
 
-        if (!response.ok) {
-          throw new Error(
-            result.message || "Gagal mengambil data weton hari ini",
-          );
+        const char = wetonData.find((w) => w.hari === wetonResult.hari && w.pasaran === wetonResult.pasaran);
+        
+        if (char) {
+          result.characteristics = {
+            dewiLindung: char.dewiLindung,
+            rakam: char.rakam,
+            karakterUtama: char.karakterUtama,
+            sifatPositif: char.sifatPositif || [],
+            sifatNegatif: char.sifatNegatif || [],
+            pekerjaanCocok: char.pekerjaanCocok || [],
+            rezekiKarir: char.rezekiKarir,
+            cintaJodoh: char.cintaJodoh,
+            jodohCocok: char.jodohCocok || [],
+            tipsDo: char.tipsDo || [],
+            tipsDont: char.tipsDont || [],
+            kataKunci: char.kataKunci,
+          };
         }
 
         setData(result);

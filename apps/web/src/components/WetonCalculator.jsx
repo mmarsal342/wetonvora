@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Loader2, Sun, Moon, Database } from "lucide-react";
+import { Calendar, Loader2, Sun, Moon } from "lucide-react";
 import WetonResult from "./WetonResult";
+import { calculateWeton, parseDate, getDateRangeInfo } from "../app/api/utils/wetonCalculator";
+import { wetonData } from "../utils/wetonData";
 
 export default function WetonCalculator() {
   const [dateInput, setDateInput] = useState("");
@@ -10,8 +12,6 @@ export default function WetonCalculator() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [seeding, setSeeding] = useState(false);
-  const [seedSuccess, setSeedSuccess] = useState(null);
 
   const handleCalculate = async (e) => {
     e.preventDefault();
@@ -20,24 +20,66 @@ export default function WetonCalculator() {
     setResult(null);
 
     try {
-      const response = await fetch("/api/weton/calculate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          dateString: dateInput,
-          afterMaghrib,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || data.error || "Terjadi kesalahan");
+      if (!dateInput) {
+        throw new Error("Mohon masukkan tanggal lahir Anda");
       }
 
-      setResult(data);
+      const date = parseDate(dateInput);
+      if (!date || isNaN(date.getTime())) {
+        throw new Error("Format yang didukung: DD/MM/YYYY atau YYYY-MM-DD. Contoh: 10/01/1989 atau 1989-01-10");
+      }
+
+      const rangeInfo = getDateRangeInfo(date);
+      const wetonResult = calculateWeton(date, afterMaghrib === true);
+      
+      const resultData = {
+        weton: wetonResult.weton,
+        hari: wetonResult.hari,
+        hariNeptu: wetonResult.hariNeptu,
+        pasaran: wetonResult.pasaran,
+        pasaranNeptu: wetonResult.pasaranNeptu,
+        totalNeptu: wetonResult.totalNeptu,
+        dateInfo: {
+          inputDate: dateInput,
+          adjustedDate: wetonResult.tanggal,
+          afterMaghrib,
+          isValidJavaneseDate: rangeInfo.isValid,
+          rangeInfo,
+        },
+      };
+
+      const char = wetonData.find((w) => w.hari === wetonResult.hari && w.pasaran === wetonResult.pasaran);
+      
+      if (char) {
+        resultData.characteristics = {
+          dewiLindung: char.dewiLindung,
+          rakam: char.rakam,
+          karakterUtama: char.karakterUtama,
+          sifatPositif: char.sifatPositif || [],
+          sifatNegatif: char.sifatNegatif || [],
+          pekerjaanCocok: char.pekerjaanCocok || [],
+          rezekiKarir: char.rezekiKarir,
+          cintaJodoh: char.cintaJodoh,
+          jodohCocok: char.jodohCocok || [],
+          tipsDo: char.tipsDo || [],
+          tipsDont: char.tipsDont || [],
+          kataKunci: char.kataKunci,
+        };
+      } else {
+        resultData.characteristics = null;
+        resultData.note = "Data karakteristik untuk weton ini sedang dalam proses pengisian";
+      }
+
+      if (!rangeInfo.isValid) {
+        if (rangeInfo.isBefore) {
+          resultData.warning = `Tanggal di luar jangkauan kalender Jawa. Kalender Jawa dimulai dari ${rangeInfo.minDate}. Perhitungan weton tetap bisa dilakukan, namun data kalender Jawa lengkap tidak tersedia.`;
+        } else if (rangeInfo.isAfter) {
+          resultData.warning = `Tanggal di luar jangkauan kalender Jawa. Kalender Jawa saat ini terdefinisi hingga ${rangeInfo.maxDate}. Perhitungan weton tetap bisa dilakukan, namun data kalender Jawa lengkap tidak tersedia.`;
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+      setResult(resultData);
     } catch (err) {
       console.error("Error:", err);
       setError(err.message || "Terjadi kesalahan saat menghitung weton");
@@ -53,34 +95,7 @@ export default function WetonCalculator() {
     setError(null);
   };
 
-  const handleSeedDatabase = async () => {
-    if (!confirm("Isi database dengan 35 data weton lengkap?")) {
-      return;
-    }
 
-    setSeeding(true);
-    setSeedSuccess(null);
-
-    try {
-      const response = await fetch("/api/weton/seed", {
-        method: "POST",
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Gagal seed database");
-      }
-
-      setSeedSuccess(data.message);
-      setTimeout(() => setSeedSuccess(null), 5000);
-    } catch (err) {
-      console.error("Seed error:", err);
-      alert("Error: " + err.message);
-    } finally {
-      setSeeding(false);
-    }
-  };
 
   return (
     <div className="w-full">
@@ -209,38 +224,7 @@ export default function WetonCalculator() {
           </div>
         )}
 
-        {/* Admin: Seed Database Button */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-gray-500">
-              <span className="font-semibold">Admin:</span> Seed database dengan
-              35 data weton lengkap
-            </div>
-            <button
-              type="button"
-              onClick={handleSeedDatabase}
-              disabled={seeding}
-              className="flex items-center gap-2 px-4 py-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-all disabled:opacity-50"
-            >
-              {seeding ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Seeding...
-                </>
-              ) : (
-                <>
-                  <Database className="h-3.5 w-3.5" />
-                  Seed Database
-                </>
-              )}
-            </button>
-          </div>
-          {seedSuccess && (
-            <div className="mt-3 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
-              {seedSuccess}
-            </div>
-          )}
-        </div>
+
       </div>
 
       {/* Result */}
